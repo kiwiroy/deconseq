@@ -11,8 +11,10 @@ For more information about BWA-SW go to http://bio-bwa.sourceforge.net/
 1. Create the databases used for contaminat screening
 
    Use command:
-      bwaXXX index -p database_name -a bwtsw fasta_file_with_ref >out.txt 2>&1 &
 
+```bash
+      bwaXXX index -p database_name -a bwtsw fasta_file_with_ref >out.txt 2>&1 &
+```
       (XXX should be replaced by MAC or 64 based on your system architecture)
 
    For alternative system architectures, download BWA version 0.5.9 source code
@@ -35,6 +37,7 @@ For more information about BWA-SW go to http://bio-bwa.sourceforge.net/
 
 2. Change values in DeconSeqConfig.pm (if applicable)
 
+```
    DB_DIR
    TMP_DIR
    OUTPUT_DIR
@@ -42,10 +45,11 @@ For more information about BWA-SW go to http://bio-bwa.sourceforge.net/
    PROG_DIR
    DBS
    DBS_DEFAULT
+```
 
    Notes: (i) If the bwaXXX program is located in the same directory as the
               deconseq.pl file, please specify ./ as program directory
-              (use: "constant PROG_DIR => './';").
+              (use: ```constant PROG_DIR => './';```).
 
 3. Setup databases
 
@@ -56,10 +60,13 @@ For more information about BWA-SW go to http://bio-bwa.sourceforge.net/
 
    In the DeconSeqConfig.pm, specify all your databases as follows:
 
-   use constant DBS => {hsref => {name => 'Human Reference GRCh37',
-                                  db => 'hs_ref_GRCh37'},
+```perl
+use constant DBS => {hsref => { name => 'Human Reference GRCh37',
+                                db   => 'hs_ref_GRCh37'},
                         vir => {name => 'Viral genomes',
-                                db => 'virDB'}};
+                                db   => 'virDB'}
+                    };
+```
 
    In this example, you have two databases created/downloaded that start with
    hs_ref_GRCh37 and virDB. You can either give them the same name or specify a
@@ -72,10 +79,15 @@ For more information about BWA-SW go to http://bio-bwa.sourceforge.net/
    the database with a single name. In the config file, you would separate the
    database names by commas (no spaces):
 
-   use constant DBS => {hsref => {name => 'Human - Reference GRCh37',
-                       db => 'hs_ref_GRCh37_1,hs_ref_GRCh37_2,hs_ref_GRCh37_3'},
-                        vir => {name => 'Viral genomes',
-                                db => 'virDB'}};
+```perl
+use constant DBS => {hsref => { name => 'Human - Reference GRCh37',
+                                db   => 'hs_ref_GRCh37_1,hs_ref_GRCh37_2,hs_ref_GRCh37_3'
+                              },
+                       vir => { name => 'Viral genomes',
+                                  db => 'virDB'
+                              }
+                    };
+```
 
    Here, the human reference genome is split up into three database chunks. In
    the command line, simply call the database by its name (hsref) and it will
@@ -100,32 +112,40 @@ For more information about BWA-SW go to http://bio-bwa.sourceforge.net/
    perl splitFasta.pl -h
 
    Examples:
-   perl splitFasta.pl -verbose -i file.fasta -s 2     #chunks of 2MB
-   perl splitFasta.pl -verbose -i file.fasta -n 10    #10 chunks
 
+```bash
+perl splitFasta.pl -verbose -i file.fasta -s 2     #chunks of 2MB
+perl splitFasta.pl -verbose -i file.fasta -n 10    #10 chunks
+```
 
 ## USAGE
 
 Run as:
-   perl deconseq.pl [options] -f <file> -dbs <list> -dbs_retain <list> ...
+
+```bash
+perl deconseq.pl [options] -f <file> -dbs <list> -dbs_retain <list> ...
+```
 
 or rename file and set chmod +x to run as:
-   ./deconseq [options] -f <file> -dbs <list> -dbs_retain <list> ...
 
-Try 'deconseq -h' for more information on the options.
+```bash
+./deconseq [options] -f <file> -dbs <list> -dbs_retain <list> ...
+```
+
+Try ```deconseq -h``` for more information on the options.
 
 
 ## DEPENDENCIES
 
 The PERL script requires these other modules:
 
-   DeconSeqConfig  (included)
-   Data::Dumper
-   Getopt::Long
-   Pod::Usage
-   File::Path      >= 2.07
-   Cwd
-   FindBin
+*   DeconSeqConfig  (included)
+*   Data::Dumper
+*   Getopt::Long
+*   Pod::Usage
+*   File::Path      >= 2.07
+*   Cwd
+*   FindBin
 
 
 ## BUG REPORTS
