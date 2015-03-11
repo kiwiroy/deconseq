@@ -99,7 +99,7 @@ For more information about BWA-SW go to http://bio-bwa.sourceforge.net/
    The file is called splitFasta.pl and you can get details on its use with:
    perl splitFasta.pl -h
 
-   OBExamples:
+   Examples:
    perl splitFasta.pl -verbose -i file.fasta -s 2     #chunks of 2MB
    perl splitFasta.pl -verbose -i file.fasta -n 10    #10 chunks
 
