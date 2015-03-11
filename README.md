@@ -1,5 +1,4 @@
-DeconSeq
-========
+# DeconSeq
 
 DECONtamination of SEQuence data using a modified version of BWA-SW
 (http://deconseq.sourceforge.net).
@@ -7,8 +6,7 @@ DECONtamination of SEQuence data using a modified version of BWA-SW
 For more information about BWA-SW go to http://bio-bwa.sourceforge.net/
 
 
-SETUP
------
+## SETUP
 
 1. Create the databases used for contaminat screening
 
@@ -101,13 +99,12 @@ SETUP
    The file is called splitFasta.pl and you can get details on its use with:
    perl splitFasta.pl -h
 
-   Examples:
+   OBExamples:
    perl splitFasta.pl -verbose -i file.fasta -s 2     #chunks of 2MB
    perl splitFasta.pl -verbose -i file.fasta -n 10    #10 chunks
 
 
-USAGE
------
+## USAGE
 
 Run as:
    perl deconseq.pl [options] -f <file> -dbs <list> -dbs_retain <list> ...
@@ -118,8 +115,7 @@ or rename file and set chmod +x to run as:
 Try 'deconseq -h' for more information on the options.
 
 
-DEPENDENCIES
-------------
+## DEPENDENCIES
 
 The PERL script requires these other modules:
 
@@ -132,15 +128,13 @@ The PERL script requires these other modules:
    FindBin
 
 
-BUG REPORTS
------------
+## BUG REPORTS
 
 If you find a bug please email me at <rschmieder_at_gmail_dot_com> so that I can
 make DeconSeq better.
 
 
-COPYRIGHT AND LICENSE
----------------------
+## COPYRIGHT AND LICENSE
 
 Copyright (C) 2010-2013  Robert SCHMIEDER
 
