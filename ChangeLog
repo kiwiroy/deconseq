@@ -1,0 +1,53 @@
+-- Version history --
+
+(If not otherwise stated, changes apply to the standalone and web version.)
+
+deconseq-0.4.3:
+Fixed issue when multiple chunks per database were specified in the config file
+that did not correctly split during search. (Thanks to Osvaldo Zagordi for
+pointing out the problem.)
+
+deconseq-0.4.2:
+Added FindBin module to find config file when run from outside the source
+directory. Improve readme file. Allow multiple chunks per database to be
+specified in the config file and used with a single database name in -dbs.
+
+deconseq-0.4.1:
+Fixed issue with missing method generateFastaFromIds. (Thanks to Valmik Desai
+for pointing out the problem.) Extended the input format from ACGTN to full
+nucleic acid ambiguity code (ACGTURYKMSWBDHVNX-).
+
+deconseq-0.4:
+Added FASTQ support to standalone version.
+
+deconseq-0.3.2:
+Fixed issues of undefined output during FASTA file generation and grouping when
+using option dbs_retain.
+
+deconseq-0.3.1:
+Removed debugging print out (3).
+
+deconseq-0.3:
+Updated BWA-SW from 0.5.8 to 0.5.9 (bugfix of very rare mismapping and change of
+scoring matrix, see http://bio-bwa.sourceforge.net/ for more details). Allow
+FASTQ file format for download (web version). Use input file name with added
+string as output file name.
+
+deconseq-0.2:
+Code cleanup. Added access to bwasw parameters -S (chunk size of input),
+-z (Z-best value) and -T (score threshold). Use -f instead of '>' for output
+generation. Modified BWA-SW file bwtsw2_aux.c to allow SAM and alternative
+DeconSeq output. Modified BWA-SW files bwtsw2_main.c and bwtsw2.h to fix double
+defined params (-s given twice, changed one to -S) and added new parameter -A
+for alternative output selection. Changed BWA-SW files stdaln.c, stdaln.h and
+bwtsw2_aux.c to include R for replacement in CIGAR strings instead of using M.
+Added parameter -R to BWA-SW to output extented CIGAR string instead of standard
+version. Modified BWA-SW file bwtsw2_aux.c to always mismatch ambiguous base N
+in query sequence instead of randomly replacing it by A, C, G or T. Added
+parameter -M to BWA-SW to force always mismatch of Ns in query.
+Web version only:
+Fixed hash issue while parsing TSV file in process_data.pl file. Fixed issue in
+parsing FASTQ files with no information in '+' header line.
+
+deconseq-0.1:
+First public release of DeconSeq.
