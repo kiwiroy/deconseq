@@ -1,0 +1,445 @@
+From 404b44d98081deceb2917cca1f7998071bf3ed6e Mon Sep 17 00:00:00 2001
+From: Roy Storey <roy.storey@plantandfood.co.nz>
+Date: Thu, 12 Mar 2015 12:13:04 +1300
+Subject: [PATCH] Code from Robert SCHMIEDER in deconseq
+
+---
+ bwtsw2.h      |   1 +
+ bwtsw2_aux.c  | 114 ++++++++++++++++++++++++++++++++++++++++++++++++----------
+ bwtsw2_main.c |  21 ++++++++---
+ stdaln.c      |  41 +++++++++++----------
+ stdaln.h      |   2 ++
+ 5 files changed, 138 insertions(+), 41 deletions(-)
+
+diff --git a/bwtsw2.h b/bwtsw2.h
+index d5dbe71..8accc33 100644
+--- a/bwtsw2.h
++++ b/bwtsw2.h
+@@ -11,6 +11,7 @@ typedef struct {
+ 	int z, is, t_seeds, hard_clip;
+ 	float yita, mask_level, coef;
+ 	int n_threads, chunk_size;
++	int alt_output, ext_cigar, mismatch_amb; //RobS
+ } bsw2opt_t;
+ 
+ typedef struct {
+diff --git a/bwtsw2_aux.c b/bwtsw2_aux.c
+index 96d0d0a..c35617c 100644
+--- a/bwtsw2_aux.c
++++ b/bwtsw2_aux.c
+@@ -53,6 +53,7 @@ bsw2opt_t *bsw2_init_opt()
+ 	o->z = 1; o->is = 3; o->t_seeds = 5; o->hard_clip = 0;
+ 	o->mask_level = 0.50f; o->yita = 5.5f; o->coef = 5.5f;
+ 	o->qr = o->q + o->r; o->n_threads = 1; o->chunk_size = 10000000;
++	o->alt_output = 0; o->ext_cigar = 0; //RobS
+ 	return o;
+ }
+ 
+@@ -66,6 +67,7 @@ void bsw2_destroy(bwtsw2_t *b)
+ 	free(b);
+ }
+ 
++//RobS: +line78
+ #define __gen_ap(par, opt) do {									\
+ 		int i;													\
+ 		for (i = 0; i < 25; ++i) (par).matrix[i] = -(opt)->b;	\
+@@ -73,6 +75,7 @@ void bsw2_destroy(bwtsw2_t *b)
+ 		(par).gap_open = (opt)->q; (par).gap_ext = (opt)->r;	\
+ 		(par).gap_end = (opt)->r;								\
+ 		(par).row = 5; (par).band_width = opt->bw;				\
++		(par).ext_cigar = opt->ext_cigar;				\
+ 	} while (0)
+ 
+ #define __rpac(pac, l, i) (pac[(l-i-1)>>2] >> (~(l-i-1)&3)*2 & 0x3)
+@@ -134,7 +137,7 @@ void bsw2_extend_rght(const bsw2opt_t *opt, bwtsw2_t *b, uint8_t *query, int lq,
+ 	uint32_t k;
+ 	uint8_t *target;
+ 	AlnParam par;
+-	
++
+ 	par.matrix = matrix;
+ 	__gen_ap(par, opt);
+ 	target = calloc(((lq + 1) / 2 * opt->a + opt->r) / opt->r + lq, 1);
+@@ -164,7 +167,7 @@ void bsw2_extend_rght(const bsw2opt_t *opt, bwtsw2_t *b, uint8_t *query, int lq,
+ }
+ 
+ /* generate CIGAR array(s) in b->cigar[] */
+-static void gen_cigar(const bsw2opt_t *opt, int lq, uint8_t *seq[2], uint8_t *pac, bwtsw2_t *b)
++static void gen_cigar(const bsw2opt_t *opt, int lq, uint8_t *seq[2], uint8_t *pac, bwtsw2_t *b, uint8_t *tseq[2]) //RobS
+ {
+ 	uint8_t *target;
+ 	int i, matrix[25];
+@@ -194,7 +197,11 @@ static void gen_cigar(const bsw2opt_t *opt, int lq, uint8_t *seq[2], uint8_t *pa
+ 		if (p->l) continue;
+ 		beg = (p->flag & 0x10)? lq - p->end : p->beg;
+ 		end = (p->flag & 0x10)? lq - p->beg : p->end;
+-		query = seq[(p->flag & 0x10)? 1 : 0] + beg;
++		if(opt->mismatch_amb) { //RobS
++			query = tseq[(p->flag & 0x10)? 1 : 0] + beg; //RobS
++		} else { //RobS
++			query = seq[(p->flag & 0x10)? 1 : 0] + beg;
++		} //RobS
+ 		for (k = p->k; k < p->k + p->len; ++k) // in principle, no out-of-boundary here
+ 			target[k - p->k] = pac[k>>2] >> (~k&3)*2 & 0x3;
+ 		score = aln_global_core(target, p->len, query, end - beg, &par, path, &path_len);
+@@ -249,8 +256,7 @@ static void merge_hits(bwtsw2_t *b[2], int l, int is_reverse)
+ 	b[1] = 0;
+ }
+ /* seq[0] is the forward sequence and seq[1] is the reverse complement. */
+-static bwtsw2_t *bsw2_aln1_core(const bsw2opt_t *opt, const bntseq_t *bns, uint8_t *pac, const bwt_t *target,
+-								int l, uint8_t *seq[2], int is_rev, bsw2global_t *pool)
++static bwtsw2_t *bsw2_aln1_core(const bsw2opt_t *opt, const bntseq_t *bns, uint8_t *pac, const bwt_t *target, int l, uint8_t *seq[2], int is_rev, bsw2global_t *pool) //RobS
+ {
+ 	extern void bsw2_chain_filter(const bsw2opt_t *opt, int len, bwtsw2_t *b[2]);
+ 	bwtsw2_t *b[2], **bb[2];
+@@ -268,7 +274,7 @@ static bwtsw2_t *bsw2_aln1_core(const bsw2opt_t *opt, const bntseq_t *bns, uint8
+ 		bsw2_resolve_duphits(0, bb[k][0], 0);
+ 		bsw2_extend_rght(opt, bb[k][0], seq[k], l, pac, bns->l_pac, is_rev, pool->aln_mem);
+ 		b[k] = bb[k][0];
+-		free(bb[k]);		
++		free(bb[k]);
+ 	}
+ 	merge_hits(b, l, 1); // again, b[1] is merged to b[0]
+ 	bsw2_resolve_query_overlaps(b[0], opt->mask_level);
+@@ -290,7 +296,7 @@ static void flag_fr(bwtsw2_t *b[2])
+ 	for (i = 0; i < b[0]->n; ++i) {
+ 		bsw2hit_t *p = b[0]->hits + i;
+ 		for (j = 0; j < b[1]->n; ++j) {
+-			bsw2hit_t *q = b[1]->hits + j;
++			bsw2hit_t *q = b[1]->hits + j;  //change of i to j since version 0.5.9
+ 			if (q->beg == p->beg && q->end == p->end && q->k == p->k && q->len == p->len && q->G == p->G) {
+ 				q->flag |= 0x30000; p->flag |= 0x30000;
+ 				break;
+@@ -392,7 +398,7 @@ static void print_hits(const bntseq_t *bns, const bsw2opt_t *opt, bsw2seq1_t *ks
+ 	int i, k;
+ 	kstring_t str;
+ 	memset(&str, 0, sizeof(kstring_t));
+-	if (b == 0 || b->n == 0) { // no hits
++	if (b == 0 || b->n == 0) { // no hits, new in version 0.5.9
+ 		ksprintf(&str, "%s\t4\t*\t0\t0\t*\t*\t0\t0\t", ks->name);
+ 		for (i = 0; i < ks->l; ++i) kputc(ks->seq[i], &str);
+ 		if (ks->qual) {
+@@ -415,7 +421,7 @@ static void print_hits(const bntseq_t *bns, const bsw2opt_t *opt, bsw2seq1_t *ks
+ 		ksprintf(&str, "\t%s\t%d", seqid>=0? bns->anns[seqid].name : "*", coor + 1);
+ 		if (p->l == 0) {
+ 			{ // estimate mapping quality
+-				float c = 1.0;	
++				float c = 1.0;
+ 				int subo = p->G2 > opt->t? p->G2 : opt->t;
+ 				if (p->flag>>16 == 1 || p->flag>>16 == 2) c *= .5;
+ 				if (p->n_seeds < 2) c *= .2;
+@@ -425,7 +431,7 @@ static void print_hits(const bntseq_t *bns, const bsw2opt_t *opt, bsw2seq1_t *ks
+ 			}
+ 			ksprintf(&str, "\t%d\t", qual);
+ 			for (k = 0; k < b->n_cigar[i]; ++k)
+-				ksprintf(&str, "%d%c", b->cigar[i][k]>>4, (opt->hard_clip? "MIDNHHP" : "MIDNSHP")[b->cigar[i][k]&0xf]);
++				ksprintf(&str, "%d%c", b->cigar[i][k]>>4, (opt->hard_clip? "MIDNHHPR" : "MIDNSHPR")[b->cigar[i][k]&0xf]); //RobS
+ 		} else ksprintf(&str, "\t0\t*");
+ 		ksprintf(&str, "\t*\t0\t0\t");
+ 		beg = 0; end = ks->l;
+@@ -454,8 +460,59 @@ static void print_hits(const bntseq_t *bns, const bsw2opt_t *opt, bsw2seq1_t *ks
+ 	free(ks->name); ks->name = 0;
+ }
+ 
++/* generate tab separated lines with query name, ref name, alignment info.
++  query_id, ref_id, ref_start, ref_bp_aligned, query_coverage, query_identity */
++static void print_hits_alt(const bntseq_t *bns, const bsw2opt_t *opt, bsw2seq1_t *ks, bwtsw2_t *b) //RobS
++{
++	int i, k;
++	kstring_t str;
++	memset(&str, 0, sizeof(kstring_t));
++	for (i = 0; b && i < b->n; ++i) {
++		bsw2hit_t *p = b->hits + i;
++		int32_t seqid = -1, coor = -1;
++		int nn, dblen = 0, qlen = 0, mlen = 0, algnlen = 0;
++		if (p->l == 0) {
++			b->n_cigar[i] = fix_cigar(ks->name, bns, p, b->n_cigar[i], b->cigar[i]);
++			nn = bns_coor_pac2real(bns, p->k, p->len, &seqid);
++			coor = p->k - bns->anns[seqid].offset;
++			ksprintf(&str, "%s\t%s\t%d", ks->name, seqid>=0? bns->anns[seqid].name : "*", coor + 1);
++			for (k = 0; k < b->n_cigar[i]; ++k) {
++				switch (b->cigar[i][k]&0xf) {
++					case 0: dblen += b->cigar[i][k]>>4; qlen += b->cigar[i][k]>>4; mlen += b->cigar[i][k]>>4; algnlen += b->cigar[i][k]>>4; break; //match
++					case 1: qlen += b->cigar[i][k]>>4; algnlen += b->cigar[i][k]>>4; break; //gap in ref
++					case 2: dblen += b->cigar[i][k]>>4; algnlen += b->cigar[i][k]>>4; break; //gap in query
++					case 7: dblen += b->cigar[i][k]>>4; qlen += b->cigar[i][k]>>4; algnlen += b->cigar[i][k]>>4; break; //substitution
++				}
++			}
++			ksprintf(&str, "\t%d", dblen);
++			if(ks->l > 0) {
++				ksprintf(&str, "\t%.2f", (100.00 * qlen / ks->l));
++			} else {
++				ksprintf(&str, "\t0");
++
++			}
++			if(algnlen > 0) {
++				ksprintf(&str, "\t%.2f", (100.00 * mlen / algnlen));
++			} else {
++				ksprintf(&str, "\t0");
++			}
++//			kputc('\t', &str);
++//			for (k = 0; k < b->n_cigar[i]; ++k)
++//					ksprintf(&str, "%d%c", b->cigar[i][k]>>4, (opt->hard_clip? "MIDNHHPR" : "MIDNSHPR")[b->cigar[i][k]&0xf]);
++//			ksprintf(&str, "\t%d", qlen);
++//			ksprintf(&str, "\t%d", algnlen);
++//			ksprintf(&str, "\t%d", mlen);
++			kputc('\n', &str);
++		}
++	}
++	ks->sam = str.s;
++	free(ks->seq); ks->seq = 0;
++	free(ks->qual); ks->qual = 0;
++	free(ks->name); ks->name = 0;
++}
++
+ /* Core routine to align reads in _seq. It is separated from
+- * process_seqs() to realize multi-threading */ 
++ * process_seqs() to realize multi-threading */
+ static void bsw2_aln_core(int tid, bsw2seq_t *_seq, const bsw2opt_t *_opt, const bntseq_t *bns, uint8_t *pac, bwt_t * const target[2])
+ {
+ 	int x;
+@@ -464,6 +521,7 @@ static void bsw2_aln_core(int tid, bsw2seq_t *_seq, const bsw2opt_t *_opt, const
+ 	for (x = 0; x < _seq->n; ++x) {
+ 		bsw2seq1_t *p = _seq->seq + x;
+ 		uint8_t *seq[2], *rseq[2];
++		uint8_t *tseq[2]; //RobS: true sequence with N = 4
+ 		int i, l, k;
+ 		bwtsw2_t *b[2];
+ 		l = p->l;
+@@ -499,17 +557,30 @@ static void bsw2_aln_core(int tid, bsw2seq_t *_seq, const bsw2opt_t *_opt, const
+ 		seq[0] = calloc(l * 4, 1);
+ 		seq[1] = seq[0] + l;
+ 		rseq[0] = seq[1] + l; rseq[1] = rseq[0] + l;
++		tseq[0] = calloc(l * 5, 1); tseq[1] = tseq[0] + l; //RobS
+ 		// convert sequences to 2-bit representation
+ 		for (i = k = 0; i < l; ++i) {
+ 			int c = nst_nt4_table[(int)p->seq[i]];
+-			if (c >= 4) { c = (int)(drand48() * 4); ++k; } // FIXME: ambiguous bases are not properly handled
++			if (c >= 4) { //RobS
++				tseq[0][i] = c; //RobS
++				tseq[1][l-1-i] = c; //RobS
++				c = 3; ++k; //Robs: set A for query and replace with N=4 before global alignment
++			} else { //RobS
++				tseq[0][i] = c; //RobS
++				tseq[1][l-1-i] = 3 - c; //RobS
++			} //RobS
++//			if (c >= 4) { c = (int)(drand48() * 4); ++k; } // FIXME: ambiguous bases are not properly handled
+ 			seq[0][i] = c;
+ 			seq[1][l-1-i] = 3 - c;
+ 			rseq[0][l-1-i] = c;
+ 			rseq[1][i] = 3 - c;
+ 		}
+ 		if (l - k < opt.t) { // too few unambiguous bases
+-			print_hits(bns, &opt, p, 0);
++			if (_opt->alt_output) { //RobS
++				//no hits need to be output
++			} else { //RobS
++				print_hits(bns, &opt, p, 0);
++			} //RobS
+ 			free(seq[0]); continue;
+ 		}
+ 		// alignment
+@@ -530,9 +601,12 @@ static void bsw2_aln_core(int tid, bsw2seq_t *_seq, const bsw2opt_t *_opt, const
+ 			bsw2_resolve_duphits(0, b[0], 0);
+ 			bsw2_resolve_query_overlaps(b[0], opt.mask_level);
+ 		} else b[1] = 0;
+-		// generate CIGAR and print SAM
+-		gen_cigar(&opt, l, seq, pac, b[0]);
+-		print_hits(bns, &opt, p, b[0]);
++		gen_cigar(&opt, l, seq, pac, b[0], tseq); //RobS
++		if (_opt->alt_output) { //RobS: print alternative output with coverage and identity values
++			print_hits_alt(bns, &opt, p, b[0]); //RobS
++		} else { //RobS: print SAM
++			print_hits(bns, &opt, p, b[0]);
++		} //RobS
+ 		// free
+ 		free(seq[0]);
+ 		bsw2_destroy(b[0]);
+@@ -615,8 +689,12 @@ void bsw2_aln(const bsw2opt_t *opt, const bntseq_t *bns, bwt_t * const target[2]
+ 		fprintf(stderr, "[bsw2_aln] insufficient memory!\n");
+ 		return;
+ 	}
+-	for (l = 0; l < bns->n_seqs; ++l)
+-		printf("@SQ\tSN:%s\tLN:%d\n", bns->anns[l].name, bns->anns[l].len);
++	if(opt->alt_output) { //RobS
++		printf("#query_id\tref_id\tref_start\tref_bp_aligned\tquery_coverage\tquery_identity\n"); //RobS
++	} else { //RobS
++		for (l = 0; l < bns->n_seqs; ++l)
++			printf("@SQ\tSN:%s\tLN:%d\n", bns->anns[l].name, bns->anns[l].len);
++	} //RobS
+ 	fread(pac, 1, bns->l_pac/4+1, bns->fp_pac);
+ 	fp = xzopen(fn, "r");
+ 	ks = kseq_init(fp);
+diff --git a/bwtsw2_main.c b/bwtsw2_main.c
+index afbad2e..946cda5 100644
+--- a/bwtsw2_main.c
++++ b/bwtsw2_main.c
+@@ -17,7 +17,7 @@ int bwa_bwtsw2(int argc, char *argv[])
+ 
+ 	opt = bsw2_init_opt();
+ 	srand48(11);
+-	while ((c = getopt(argc, argv, "q:r:a:b:t:T:w:d:z:m:y:s:c:N:Hf:")) >= 0) {
++	while ((c = getopt(argc, argv, "q:r:a:b:t:T:w:d:z:m:y:s:c:N:Hf:S:ARM")) >= 0) { //RobS
+ 		switch (c) {
+ 		case 'q': opt->q = atoi(optarg); break;
+ 		case 'r': opt->r = atoi(optarg); break;
+@@ -34,9 +34,17 @@ int bwa_bwtsw2(int argc, char *argv[])
+ 		case 'N': opt->t_seeds = atoi(optarg); break;
+ 		case 'H': opt->hard_clip = 1; break;
+ 		case 'f': xreopen(optarg, "w", stdout); break;
++		case 'S': opt->chunk_size = atoi(optarg); break; //RobS
++		case 'A': opt->alt_output = 1; break; //RobS
++		case 'R': opt->ext_cigar = 1; break; //RobS
++		case 'M': opt->mismatch_amb = 1; break; //RobS
+ 		}
+ 	}
+ 	opt->qr = opt->q + opt->r;
++	if(opt->alt_output) { //RobS: option -A implies -R and -M
++		opt->ext_cigar = 1; //RobS
++		opt->mismatch_amb = 1; //RobS
++	} //RobS
+ 
+ 	if (optind + 2 > argc) {
+ 		fprintf(stderr, "\n");
+@@ -48,7 +56,7 @@ int bwa_bwtsw2(int argc, char *argv[])
+ //		fprintf(stderr, "         -y FLOAT error recurrence coef. (4..16) [%.1f]\n", opt->yita);
+ 		fprintf(stderr, "\n");
+ 		fprintf(stderr, "         -t INT   number of threads [%d]\n", opt->n_threads);
+-		fprintf(stderr, "         -s INT   size of a chunk of reads [%d]\n", opt->chunk_size);
++		fprintf(stderr, "         -S INT   size of a chunk of reads [%d]\n", opt->chunk_size); //RobS
+ 		fprintf(stderr, "\n");
+ 		fprintf(stderr, "         -w INT   band width [%d]\n", opt->bw);
+ 		fprintf(stderr, "         -m FLOAT mask level [%.2f]\n", opt->mask_level);
+@@ -59,7 +67,12 @@ int bwa_bwtsw2(int argc, char *argv[])
+ 		fprintf(stderr, "         -N INT   # seeds to trigger reverse alignment [%d]\n", opt->t_seeds);
+ 		fprintf(stderr, "         -c FLOAT coefficient of length-threshold adjustment [%.1f]\n", opt->coef);
+ 		fprintf(stderr, "         -H       in SAM output, use hard clipping rather than soft\n");
+-        fprintf(stderr, "         -f FILE  file to output results to instead of stdout\n\n");
++		fprintf(stderr, "         -f FILE  file to output results to instead of stdout\n\n");
++		fprintf(stderr, "         -f FILE  file to output results to instead of stdout\n\n");
++		fprintf(stderr, "         -A       use alternative output format\n"); //RobS
++		fprintf(stderr, "         -R       use R for substitutions instead of M in CIGAR string\n"); //RobS
++		fprintf(stderr, "         -M       always mismatch Ns in query sequence\n"); //RobS
++		fprintf(stderr, "\n"); //RobS
+ 		fprintf(stderr, "Note: For long Illumina, 454 and Sanger reads, assembly contigs, fosmids and\n");
+ 		fprintf(stderr, "      BACs, the default setting usually works well. For the current PacBio\n");
+ 		fprintf(stderr, "      reads (end of 2010), '-b5 -q2 -r1 -z10' is recommended. One may also\n");
+@@ -93,6 +106,6 @@ int bwa_bwtsw2(int argc, char *argv[])
+ 	bns_destroy(bns);
+ 	bwt_destroy(target[0]); bwt_destroy(target[1]);
+ 	free(opt);
+-	
++
+ 	return 0;
+ }
+diff --git a/stdaln.c b/stdaln.c
+index 7b55b2e..67832ff 100644
+--- a/stdaln.c
++++ b/stdaln.c
+@@ -52,21 +52,21 @@ char *aln_nt16_rev_table = "XAGRCMSVTWKDYHBN-";
+ 
+ /* char -> 5 (=4+1) nucleotides */
+ unsigned char aln_nt4_table[256] = {
+-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
++	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
+ 	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 5 /*'-'*/, 4, 4,
+-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 0, 4, 2,  4, 4, 4, 1,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 4, 4, 4,  3, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 0, 4, 2,  4, 4, 4, 1,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 4, 4, 4,  3, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
+-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4, 
++	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 0, 4, 2,  4, 4, 4, 1,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 4, 4, 4,  3, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 0, 4, 2,  4, 4, 4, 1,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 4, 4, 4,  3, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
++	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
+ 	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4
+ };
+ char *aln_nt4_rev_table = "AGCTN-";
+@@ -363,7 +363,7 @@ int aln_global_core(unsigned char *seq1, int len1, unsigned char *seq2, int len2
+ 	b = ap->band_width;
+ 	score_matrix = ap->matrix;
+ 	N_MATRIX_ROW = ap->row;
+-	
++
+ 	if (len1 == 0 || len2 == 0) {
+ 		*path_len = 0;
+ 		return 0;
+@@ -389,7 +389,7 @@ int aln_global_core(unsigned char *seq1, int len1, unsigned char *seq2, int len2
+ 		dpcell[j] -= j - b2;
+ 	curr = (dpscore_t*)malloc(sizeof(dpscore_t) * (len1 + 1));
+ 	last = (dpscore_t*)malloc(sizeof(dpscore_t) * (len1 + 1));
+-	
++
+ 	/* set first row */
+ 	SET_INF(*curr); curr->M = 0;
+ 	for (i = 1, s = curr + 1; i < b1; ++i, ++s) {
+@@ -509,6 +509,9 @@ int aln_global_core(unsigned char *seq1, int len1, unsigned char *seq2, int len2
+ 			case FROM_D: type = q->Dt; break;
+ 		}
+ 		p->ctype = ctype; p->i = i; p->j = j;
++		if(ap->ext_cigar && ctype == FROM_M && seq1[i] != seq2[j]) { //RobS: save values for replacement as R instead of M
++			p->ctype = (unsigned char)7; //RobS
++		} //RobS
+ 		++p;
+ 	} while (i || j);
+ 	*path_len = p - path - 1;
+@@ -520,7 +523,7 @@ int aln_global_core(unsigned char *seq1, int len1, unsigned char *seq2, int len2
+ 		free(dpcell[j]);
+ 	free(dpcell);
+ 	free(curr); free(last);
+-	
++
+ 	return max;
+ }
+ /*************************************************
+@@ -793,7 +796,7 @@ AlnAln *aln_stdaln_aux(const char *seq1, const char *seq2, const AlnParam *ap,
+ 		for (j = 0; j < len2; ++j)
+ 			seq22[j] = aln_aa_table[(int)seq2[j]];
+ 	}
+-	
++
+ 	if (type == ALN_TYPE_GLOBAL) score = aln_global_core(seq11, len1, seq22, len2, ap, aa->path, &aa->path_len);
+ 	else if (type == ALN_TYPE_LOCAL) score = aln_local_core(seq11, len1, seq22, len2, ap, aa->path, &aa->path_len, thres, &aa->subo);
+ 	else if (type == ALN_TYPE_EXTEND)  score = aln_extend_core(seq11, len1, seq22, len2, ap, aa->path, &aa->path_len, 1, 0);
+@@ -962,7 +965,7 @@ int aln_extend_core(unsigned char *seq1, int len1, unsigned char *seq2, int len2
+ 			f -= r;
+ 			f = f > h? f : h;
+ 			*s |= e;
+-		}			
++		}
+ 		eh[end] = h1 << 16;
+ 		/* recalculate start and end, the boundaries of the band */
+ 		if (_end <= 0) break; /* no cell in this row has a positive score */
+diff --git a/stdaln.h b/stdaln.h
+index f0048b3..22e733a 100644
+--- a/stdaln.h
++++ b/stdaln.h
+@@ -92,6 +92,8 @@ typedef struct
+ 	int *matrix;
+ 	int row;
+ 	int band_width;
++
++	int ext_cigar; //RobS
+ } AlnParam;
+ 
+ typedef struct
+-- 
+2.1.0
+
